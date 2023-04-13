@@ -1,4 +1,4 @@
-```
+```c#
 void CaseA()
 {
     while (isRun)
