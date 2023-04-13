@@ -1,4 +1,4 @@
-```ruby
+```csharp
 void CaseA()
 {
     while (isRun)
