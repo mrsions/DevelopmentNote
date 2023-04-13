@@ -1,0 +1,9 @@
+```
+void CaseA()
+{
+    while (isRun)
+    {
+        a++;
+    }
+}
+```
