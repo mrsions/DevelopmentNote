@@ -1,6 +1,5 @@
 # 1. Task?
 
-
 - 비동기 프로그래밍이 아니더라도 어떤 행동을 기다리는 등의 로직처리를 할때 사용된다.
 - 얼마전 기존에 사용하던 방식 이외의 비동기 처리방식을 발견하여 정리한다.
 
@@ -198,3 +197,97 @@ private async UniTask Run()
 }
 ```
 
+### 3.1. UniTaskCompletionSource MainThread 유지
+- 위 소스코드를 실행한 뒤 쓰레드 전환 상태를 보면 언제나 MainThread에서 실행된다.
+- 하지만 다른 쓰레드에서 호출하게되면 SynchronizationContext 유지가 끊기면서 TaskScheduler에 의한 멀티쓰레딩 환경으로 바뀌게된다.
+
+```csharp    
+private void Update()
+{
+    ...
+    else if (Input.GetMouseButtonDown(1))
+    {
+        new Thread(() => // 외부 쓰레드에서 result값을 입력함.
+        {
+            Debug.Log($"Set result. [{Thread.CurrentThread.ManagedThreadId}]"); // Thread 864
+            m_GetMouseTaskSource?.TrySetResult(1);
+        }).Start();
+    }
+    ...
+}
+
+private async UniTask Run()
+{
+    try
+    {
+        m_GetMouseTaskSource = new UniTaskCompletionSource<int>();
+
+        Debug.Log($"Wait for task [{Thread.CurrentThread.ManagedThreadId}]");   // Thread 1
+
+        var mouseCode = await m_GetMouseTaskSource.Task;
+
+        Debug.Log($"Result is {mouseCode} [{Thread.CurrentThread.ManagedThreadId}]"); // Thread 864
+
+        await UniTask.SwitchToMainThread();
+
+        Debug.Log($"Result is {mouseCode} [{Thread.CurrentThread.ManagedThreadId}]"); // Thread 1
+    }
+    catch (OperationCanceledException)
+    {
+        Debug.Log("Canceled");
+    }
+    catch (Exception ex)
+    {
+        Debug.LogException(ex);
+    }
+}
+```
+
+- 실행 결과를 보면 SetResult를 호출한 쓰레드에서 실행문이 바로 실행되는것을 알 수 있다.
+- 그렇기에 위 방식으로 처리한 뒤에는 SwitchToMainThread를 해주어야만 메인쓰레드로 확정적으로 돌아올 수 있다.
+
+### 3.2. TaskCompletionSource를 이용한 Context 유지
+
+- UniTask에는 ConfigureAwait()함수가 없기때문에 context를 유지하기위해 SwitchToMainThread()를 사용해줘야했다.
+- 기존 Task를 사용할경우 아래의 방식으로도 유지할 수 있다.
+
+```csharp
+private TaskCompletionSource<int>? m_GetMouseTaskSource; // UniTaskCompletionSource를 사용하지않는다.
+
+private void Update()
+{
+    ...
+    else if (Input.GetMouseButtonDown(1))
+    {
+        new Thread(() =>
+        {
+            Debug.Log($"Set result. [{Thread.CurrentThread.ManagedThreadId}]"); // Thread 864
+            m_GetMouseTaskSource?.TrySetResult(1);
+        }).Start();
+    }
+    ...
+}
+
+private async UniTask Run()
+{
+    try
+    {
+        m_GetMouseTaskSource = new TaskCompletionSource<int>(); // UniTaskCompletionSource를 사용하지않는다.
+
+        Debug.Log($"Wait for task [{Thread.CurrentThread.ManagedThreadId}]"); // Thread 1
+
+        var mouseCode = await m_GetMouseTaskSource.Task
+                        .ConfigureAwait(true);  // ConfigureAwait을 이용해 실행 Context를 유지시킨다.
+
+        Debug.Log($"Result is {mouseCode} [{Thread.CurrentThread.ManagedThreadId}]"); // Thread 1
+    }
+    catch (OperationCanceledException)
+    {
+        Debug.Log("Canceled");
+    }
+    catch (Exception ex)
+    {
+        Debug.LogException(ex);
+    }
+}
+```
