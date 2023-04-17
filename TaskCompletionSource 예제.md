@@ -114,3 +114,86 @@ enterTaskSource.TrySetResult();
 [21:04:58.676] Thanks // 1ms
 ```
 
+### 2.1. Methods
+
+| Method Name | Description |
+|-------------|-------------|
+| TrySetResult()     | Task를 완료상태로 만든다.|
+| TrySetException()  | Task에 Exception을 입력하고 await되고 있는 Task를 throw 한다.|
+| TrySetCanceled()   | Task를 취소하고 await되고 있는 Task에 OperationCancellationException을 발생시켜 throw한다.|
+
+### 2.2. TaskCompletionSource<T>
+
+```csharp
+var enterTaskSource = new TaskCompletionSource<int>();
+
+enterTaskSource.TrySetResult(10);
+
+int value = await enterTaskSource.Task;
+
+Console.WriteLine(value); // 10 출력
+```
+
+
+
+# 3. UniTask
+- UniTask에서도 Task와 비슷하게 UniTaskCompletionSource를 이용하여 비슷한 구현을 만들 수 있다.
+
+```csharp
+private UniTaskCompletionSource<int>? m_GetMouseTaskSource;
+
+private void Update()
+{
+    // A키를 입력하면 Task를 실행한다.
+    if (Input.GetKeyDown(KeyCode.A))
+    {
+        Run().Forget();
+    }
+    // Esc 키를 누르면 Run을 취소한다.
+    else if (Input.GetKeyDown(KeyCode.Escape))
+    {
+        m_GetMouseTaskSource?.TrySetCanceled();
+    }
+    // 마우스 왼쪽 버튼을 누르면 0 값을 반환하도록한다.
+    else if (Input.GetMouseButtonDown(0))
+    {
+        m_GetMouseTaskSource?.TrySetResult(0);
+    }
+    // 마우스 오른쪽 버튼을 누르면 1 값을 반환하도록 한다.
+    else if (Input.GetMouseButtonDown(1))
+    {
+        m_GetMouseTaskSource?.TrySetResult(1);
+    }
+    // 마우스 휠 버튼을 누르면 예외를 출력한다.
+    else if (Input.GetMouseButtonDown(2))
+    {
+        m_GetMouseTaskSource?.TrySetException(new NotSupportedException("Not support wheel button."));
+    }
+}
+
+// A키를 입력하면 Task가 실행된다.
+private async UniTask Run()
+{
+    try
+    {
+        // 소스를 제작한다.
+        m_GetMouseTaskSource = new UniTaskCompletionSource<int>();
+
+        // 입력을 기다리고 출력한다.
+        var mouseCode = await m_GetMouseTaskSource.Task;
+
+        Debug.Log($"Result is {mouseCode}");
+    }
+    catch (OperationCanceledException)
+    {
+        // 취소 처리
+        Debug.Log("Canceled");
+    }
+    catch (Exception ex)
+    {
+        // 예외 처리
+        Debug.LogException(ex);
+    }
+}
+```
+
